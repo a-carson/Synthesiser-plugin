@@ -25,14 +25,18 @@ SynthesiserAudioProcessor::SynthesiserAudioProcessor()
 #endif
     parameters(*this, nullptr, "ParamTreeIdentifier", {
 std::make_unique < AudioParameterFloat >("detune", "Detune (Hz)", 0.0f, 0.1f , 0.01f) ,
+std::make_unique < AudioParameterFloat >("attack", "Attack", 0.001f, 5.0f , 0.1f) ,
+std::make_unique < AudioParameterFloat >("decay", "Decay", 0.001f, 5.0f , 0.5f) ,
+std::make_unique < AudioParameterFloat >("sustain", "Sustain", 0.01f, 1.0f , 0.75f) ,
+std::make_unique < AudioParameterFloat >("release", "Release", 0.01f, 10.0f , 1.0f) ,
+
+
         })
 {// Constructor ///////////////////////
 
-    // Parameters
-    detuneParam = parameters.getRawParameterValue("detune");
 
 
-    // Sythns
+    // Synth Voices
     for (int i = 0; i < voiceCount; i++)
     {
         synth.addVoice(new MySynthVoice() );
@@ -40,10 +44,22 @@ std::make_unique < AudioParameterFloat >("detune", "Detune (Hz)", 0.0f, 0.1f , 0
 
     synth.addSound(new MySynthSound());
 
+    // Parameters
+    detuneParam = parameters.getRawParameterValue("detune");
+    attackParam = parameters.getRawParameterValue("attack");
+    decayParam = parameters.getRawParameterValue("decay");
+    sustainParam = parameters.getRawParameterValue("sustain");
+    releaseParam = parameters.getRawParameterValue("release");
+
+
     for (int i = 0; i < voiceCount; i++)
     {
         MySynthVoice* v = dynamic_cast<MySynthVoice*>(synth.getVoice(i));
-        v->setParameterPointers(detuneParam);
+        v->setParameterPointers(detuneParam, 
+                                attackParam, 
+                                decayParam, 
+                                sustainParam, 
+                                releaseParam);
     }
 
 

@@ -64,8 +64,10 @@ private:
     int voiceCount = 16;
 
     std::atomic <float >* detuneParam;
-    float suckit;
-    float yeehawBitch;
+    std::atomic <float >* attackParam;
+    std::atomic <float >* decayParam;
+    std::atomic <float >* sustainParam;
+    std::atomic <float >* releaseParam;
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthesiserAudioProcessor)
 };

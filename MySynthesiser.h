@@ -42,6 +42,15 @@ class MySynthVoice : public SynthesiserVoice
 public:
     MySynthVoice() {}
 
+    void setParameterPointers(std::atomic <float>* param1, std::atomic <float>* param2, std::atomic <float>* param3, std::atomic <float>* param4, std::atomic <float>* param5)
+    {
+        detuneAmount = param1;
+        attack = param2;
+        decay = param3;
+        sustain = param4;
+        release = param5;
+    }
+
     void initialise(float sampleRate)
     {
         // Oscillators
@@ -50,18 +59,14 @@ public:
 
         // Envelope
         env.setSampleRate(sampleRate);
-        ADSR::Parameters envParams;
-        envParams.attack = 1.0f;
-        envParams.decay = 0.25f;
-        envParams.sustain = 0.75f;
-        envParams.release = 1.0f;
+        envParams.attack = 0.1f;
+        envParams.decay = 0.1f;
+        envParams.sustain = 1.0f;
+        envParams.release = 0.01f;
         env.setParameters(envParams);
     }
 
-    void setParameterPointers(std::atomic <float>* detuneParam)
-    {
-        detuneAmount = detuneParam;
-    }
+ 
     //--------------------------------------------------------------------------
     /**
      What should be done when a note starts
@@ -110,10 +115,16 @@ public:
         {
             detuneOsc.setFrequency(freq * (1.0f - *detuneAmount));
 
+
             // iterate through the necessary number of samples (from startSample up to startSample + numSamples)
             for (int sampleIndex = startSample; sampleIndex < (startSample + numSamples); sampleIndex++)
             {
-                
+                /*envParams.attack = *attack;
+                envParams.decay = *decay;
+                envParams.sustain = *sustain;
+                envParams.release = *release;
+                env.setParameters(envParams);*/
+
                 float envVal = env.getNextSample();
                 float currentSample = (triOsc.process() + 0.5 * detuneOsc.process())* envVal;
                 
@@ -127,7 +138,7 @@ public:
 
                 if (ending)
                 {
-                    if (envVal < 0.00001f)
+                    if (envVal < 0.001f)
                     {
                         clearCurrentNote();
                         playing = false;
@@ -164,6 +175,13 @@ private:
     float freq;
     std::atomic <float>* detuneAmount;
     ADSR env;
+    ADSR::Parameters envParams;
+    std::atomic <float>* attack;
+    std::atomic <float>* decay;
+    std::atomic <float>* sustain;
+    std::atomic <float>* release;
+
+    
 
     /// a random object for use in our test noise function
     Random random;
