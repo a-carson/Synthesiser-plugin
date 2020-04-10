@@ -63,11 +63,24 @@ private:
     Synthesiser synth;
     int voiceCount = 16;
 
+    std::atomic <float >* osc1Type;
+    std::atomic <float >* osc2Type;
+
+
+
+    std::atomic <float >* volumeParam;
     std::atomic <float >* detuneParam;
     std::atomic <float >* attackParam;
     std::atomic <float >* decayParam;
     std::atomic <float >* sustainParam;
     std::atomic <float >* releaseParam;
+
+    std::atomic <float >* cutOffParam;
+    std::atomic <float >* qParam;
+    std::atomic <float >* filterType;
+
+
+
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthesiserAudioProcessor)
 };

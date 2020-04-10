@@ -24,13 +24,22 @@ SynthesiserAudioProcessor::SynthesiserAudioProcessor()
                        ),
 #endif
     parameters(*this, nullptr, "ParamTreeIdentifier", {
-std::make_unique < AudioParameterFloat >("detune", "Detune (Hz)", 0.0f, 0.1f , 0.01f) ,
-std::make_unique < AudioParameterFloat >("attack", "Attack", 0.001f, 5.0f , 0.1f) ,
-std::make_unique < AudioParameterFloat >("decay", "Decay", 0.001f, 5.0f , 0.5f) ,
-std::make_unique < AudioParameterFloat >("sustain", "Sustain", 0.01f, 1.0f , 0.75f) ,
-std::make_unique < AudioParameterFloat >("release", "Release", 0.01f, 10.0f , 1.0f) ,
+    // Osc Types
+    std::make_unique < AudioParameterChoice >("osc1_type", "Oscillator 1", StringArray{ "Saw", "Sine", "Square", "Triangle"}, 0),
+    std::make_unique < AudioParameterChoice >("osc2_type", "Oscillator 2", StringArray{ "Saw", "Sine", "Square", "Triangle"}, 0),
 
-
+    // Env
+    std::make_unique < AudioParameterFloat >("detune", "Detune", 0.0f, 0.1f , 0.01f) ,
+    std::make_unique < AudioParameterFloat >("attack", "Attack", 0.002f, 3.0f , 0.1f) ,
+    std::make_unique < AudioParameterFloat >("decay", "Decay", 0.002f, 3.0f , 0.5f) ,
+    std::make_unique < AudioParameterFloat >("sustain", "Sustain", 0.01f, 1.0f , 0.75f) ,
+    std::make_unique < AudioParameterFloat >("release", "Release", 0.01f, 3.0f , 1.0f) ,
+    std::make_unique < AudioParameterFloat >("vol", "Volume", 0.000001f, 1.0f , 0.8f) ,
+    // Filter
+    std::make_unique < AudioParameterFloat >("cut_off", "Cut-off", 0.0f, 1.0f , 0.5f) ,
+    std::make_unique < AudioParameterFloat >("q", "Q", 1.0f, 20.0f , 1.0f) ,
+    std::make_unique < AudioParameterChoice >("filter_type", "Filter Type",
+        StringArray{ "Low Pass", "High Pass", "Band Pass"}, 0),
         })
 {// Constructor ///////////////////////
 
@@ -44,22 +53,39 @@ std::make_unique < AudioParameterFloat >("release", "Release", 0.01f, 10.0f , 1.
 
     synth.addSound(new MySynthSound());
 
-    // Parameters
+    // Parameters +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    // Oscillators
+    osc1Type = parameters.getRawParameterValue("osc1_type");
+    osc2Type = parameters.getRawParameterValue("osc2_type");
+  
     detuneParam = parameters.getRawParameterValue("detune");
+
+    // Envelope
     attackParam = parameters.getRawParameterValue("attack");
     decayParam = parameters.getRawParameterValue("decay");
     sustainParam = parameters.getRawParameterValue("sustain");
     releaseParam = parameters.getRawParameterValue("release");
+    volumeParam = parameters.getRawParameterValue("vol");
 
+    // Filter
+    cutOffParam = parameters.getRawParameterValue("cut_off");
+    qParam = parameters.getRawParameterValue("q");
+    filterType = parameters.getRawParameterValue("filter_type");
 
     for (int i = 0; i < voiceCount; i++)
     {
         MySynthVoice* v = dynamic_cast<MySynthVoice*>(synth.getVoice(i));
-        v->setParameterPointers(detuneParam, 
+        v->setParameterPointers(osc1Type,
+                                osc2Type,
+                                detuneParam, 
                                 attackParam, 
                                 decayParam, 
                                 sustainParam, 
-                                releaseParam);
+                                releaseParam, 
+                                volumeParam,
+                                cutOffParam,
+                                qParam,
+                                filterType);
     }
 
 
@@ -142,6 +168,7 @@ void SynthesiserAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
         MySynthVoice* v = dynamic_cast<MySynthVoice*>(synth.getVoice(i));
         v->initialise(sampleRate);
     }
+
 }
 
 void SynthesiserAudioProcessor::releaseResources()
@@ -179,7 +206,6 @@ void SynthesiserAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBu
     ScopedNoDenormals noDenormals;
 
     synth.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
-
 }
 
 //==============================================================================
