@@ -12,7 +12,10 @@
 
 #include <JuceHeader.h>
 #include "MySynthesiser.h"
+#include "MoogVCF.h"
+#include "DelayLine.h"
 
+//#include "juce_dsp/processors/juce_ProcessContext.h"
 //==============================================================================
 /**
 */
@@ -56,19 +59,28 @@ public:
     void getStateInformation (MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    void process(dsp::ProcessContextReplacing <float> context);
+    void updateDspParameters();
+    void updateOtherParameters();
+
 private:
-    
+    float sr;
     AudioProcessorValueTreeState parameters;
 
     Synthesiser synth;
-    int voiceCount = 16;
+    int voiceCount = 8;
 
     std::atomic <float >* osc1Type;
     std::atomic <float >* osc2Type;
 
 
+    dsp::LadderFilter<float > lowPassLadder;
+    dsp::LadderFilter<float > highPassLadder;
 
-    std::atomic <float >* volumeParam;
+    std::atomic <float >* volumeParam1;
+    std::atomic <float >* volumeParam2;
+    std::atomic <float >* noise;
+
     std::atomic <float >* detuneParam;
     std::atomic <float >* attackParam;
     std::atomic <float >* decayParam;
@@ -78,9 +90,23 @@ private:
     std::atomic <float >* cutOffParam;
     std::atomic <float >* qParam;
     std::atomic <float >* filterType;
+    std::atomic <float >* filterLfoFreqParam;
+    std::atomic <float >* filterLfoDepthParam;
+    float lfoVal;
+    float lfoMin;
+    float lfoMax;
 
 
+    IIRFilter filter;
+    MoogLadderFilterLinear moog{};
 
+    SineOsc lfo;
+
+    DelayLine delay;
+    std::atomic <float >* delayTimeParam;
+    std::atomic <float >* delayBlendParam;
+    std::atomic <float >* feedbackParam;
+    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedDelayTime;
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthesiserAudioProcessor)
 };

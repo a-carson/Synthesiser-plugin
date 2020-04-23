@@ -38,6 +38,7 @@ public:
     {
         frequency = freq;
         phaseDelta = frequency / sampleRate;
+        c = sampleRate / (4 * frequency);
     }
 
     /*Sets the phase shift*/
@@ -70,6 +71,11 @@ public:
 
 
     float threshold = 0.5f;
+    float bphase = 0.0f;
+    float sq = 0.0f;
+    float dsq = 0.0f;
+    float z1 = 0.0f;
+    float c = 0.0f;
 
 private:
     float frequency;
@@ -77,6 +83,10 @@ private:
     float phase = 0.0f;
     float phaseDelta;
     float phaseShift = 0.0f;
+
+
+
+
 };
 
 /*Generates a triangular wave*/
@@ -135,6 +145,31 @@ class TriSquareOsc : public Phasor
 };
 
 
+class AntiAliasedSaw : public Phasor
+{
+    float output(float p) override
+    {
+        bphase = 2 * p - 1.0;               // set phase to count from -1 to 1
+        sq = pow(bphase, 2);                // square
+        dsq = sq - z1;                      // differentiate
+        z1 = sq;                            // update state variable
+        float out = c * dsq * 0.5f;
+        return out; 
+    }
 
+};
+
+class Noise
+{
+public:
+    float process()
+    {
+        return random.nextFloat() * 0.5f;
+    }
+
+private:
+ Random random;
+
+};
 #endif /* Oscillators_h */
 

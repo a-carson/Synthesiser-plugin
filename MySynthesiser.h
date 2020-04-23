@@ -11,6 +11,7 @@
 #pragma once
 #include "Oscillator.h"
 
+
 // ===========================
 // ===========================
 // SOUND
@@ -21,8 +22,6 @@ public:
     //--------------------------------------------------------------------------
     bool appliesToChannel(int) override { return true; }
 };
-
-
 
 
 // =================================
@@ -60,31 +59,31 @@ public:
     {
         osc1Type = param1;
         osc2Type = param2;
-        detuneAmount = param3;
-        attack = param4;
-        decay = param5;
-        sustain = param6;
-        release = param7;
-        volume = param8;
-        cutOff = param9;
-        resonance = param10;
-        filterType = param11;
-
+        vol1 = param3;
+        vol2 = param4;
+        detuneAmount = param5;
+        attack = param6;
+        decay = param7;
+        sustain = param8;
+        release = param9;
+        cutOff = param10;
+        resonance = param11;
+        filterType = param12;
+        vol3 = param13;
     }
 
     void initialise(float sampleRate)
     {
         // Oscillators
-        detuneOsc.setSampleRate(sampleRate);
         setOscSampleRates(sampleRate);
+
         // Envelope
         env.setSampleRate(sampleRate);
 
         // Smoothed Values;
-        smoothedVolume.reset(1024);
-        sr = sampleRate;
+        smoothedVol1.reset(512);
 
-        filter.setCoefficients(IIRCoefficients::makeLowPass(sampleRate, 1000.0f));
+        sr = sampleRate;
     }
 
  
@@ -97,15 +96,17 @@ public:
      @param SynthesiserSound unused variable
      @param / unused variable
      */
-    void startNote(int midiNoteNumber, float velocity, SynthesiserSound*, int /*currentPitchWheelPosition*/) override
+    void startNote(int midiNoteNumber, float velocity, SynthesiserSound*, int currentPitchWheelPosition) override
     {
-        // Freq
+        // Set frequencies
         playing = true;
         freq = MidiMessage::getMidiNoteInHertz(midiNoteNumber);
-        setOscFrequency(1, freq);
-        setOscFrequency(2, freq);
+        pitchWheelMoved(currentPitchWheelPosition);
+        setOscFrequency(1, freq * pitchBend);
+        setOscFrequency(2, freq * pitchBend);
         
-        // Env
+        
+        // Start envelope
         ending = false;
         env.reset();
         envParams.attack = *attack;
@@ -116,7 +117,11 @@ public:
         env.noteOn();
     }
 
-   // Set sample rates of oscillators
+    // ----------------------------------------------------------------------------
+    /**
+    Set sample rates for all oscillators
+    @param sampleRate
+    */
     void setOscSampleRates(float sampleRate)
     {
         sawOsc1.setSampleRate(sampleRate);
@@ -129,7 +134,12 @@ public:
         triOsc2.setSampleRate(sampleRate);
     }
 
-    // Set frequencies of oscillators
+    //---------------------------------------------------------------------------
+    /*
+    Set frequencies of oscillators
+    @osc (1 or 2)
+    @freq
+    */
     void setOscFrequency(int osc, float freq)
     {
         if (osc == 1)
@@ -149,7 +159,11 @@ public:
         }
     }
 
-    // play specific oscillator depending on input + drop down value
+    //---------------------------------------------------------------------------
+    /*
+    Process a specific oscillator deoending on user choice
+    @osc (1 or 2)
+    */
     float oscProcess(int osc)
     {
         int oscType;
@@ -183,18 +197,6 @@ public:
         }
     }
 
-    // set filter parameters depending on drop-down type
-    void setFilterParameters(float freq, float q)
-    {
-        int type = (int) *filterType;
-
-        if (type == 0)
-            filter.setCoefficients(IIRCoefficients::makeLowPass(sr, pow(2, jmap(freq, 0.0f, 1.0f, 4.32f, 14.32f)), q));
-        if (type == 1)
-            filter.setCoefficients(IIRCoefficients::makeHighPass(sr, pow(2, jmap(freq, 0.0f, 1.0f, 4.32f, 14.32f)), q));
-        if (type == 2)
-            filter.setCoefficients(IIRCoefficients::makeBandPass(sr, pow(2, jmap(freq, 0.0f, 1.0f, 4.32f, 14.32f)), q));
-    }
     //--------------------------------------------------------------------------
     /// Called when a MIDI noteOff message is received
     /**
@@ -223,40 +225,66 @@ public:
     {
         if (playing) // check to see if this voice should be playing
         {
-            setFilterParameters(*cutOff, *resonance);
-            setOscFrequency(2, freq * (1.0f - *detuneAmount));
-            smoothedVolume.setTargetValue(*volume);
+            updateParameters();
 
-
-            // iterate through the necessary number of samples (from startSample up to startSample + numSamples)
             for (int sampleIndex = startSample; sampleIndex < (startSample + numSamples); sampleIndex++)
             {
+                // Update Parameters
+                updateParameters();
 
-                float envVal = env.getNextSample();
-                float currentSample = (oscProcess(1) * 0.5 + oscProcess(2) * 0.5 )* envVal * 0.5;
-                currentSample = filter.processSingleSampleRaw(currentSample);
+                // Set frequencies
+                setOscFrequency(1, freq * pitchBend);
+                setOscFrequency(2, freq * detune * pitchBend);
 
+                // Process oscs
+                float currentSample = 0.5f * (oscProcess(1) * gain1 + oscProcess(2) * gain2 + noise.process() * gain3);
 
-                // for each channel, write the currentSample float to the output
+                // Get envelope value
+                float envelopeValue = env.getNextSample();
+                currentSample *= envelopeValue;
+
+                // Write to output channels
                 for (int chan = 0; chan < outputBuffer.getNumChannels(); chan++)
                 {
-                    // The output sample is scaled by 0.2 so that it is not too loud by default
                     outputBuffer.addSample(chan, sampleIndex, currentSample);
                 }
 
+                // Clear note
                 if (ending)
                 {
-                    if (envVal < 0.001f)
+                    if (envelopeValue < 0.001f)
                     {
                         clearCurrentNote();
                         playing = false;
+                        
                     }
                 }
             }
         }
     }
     //--------------------------------------------------------------------------
-    void pitchWheelMoved(int) override {}
+    /*
+    Update parameters from UI
+    */
+    void updateParameters()
+    {
+        smoothedVol1.setTargetValue(*vol1);
+        smoothedVol2.setTargetValue(*vol2);
+        smoothedVol3.setTargetValue(*vol3);
+        gain1 = smoothedVol1.getNextValue();
+        gain2 = smoothedVol2.getNextValue();
+        gain3 = smoothedVol3.getNextValue();
+        detune = 1.0f + 0.5f * pow(*detuneAmount, 3);
+    }
+
+    //--------------------------------------------------------------------------
+    void pitchWheelMoved(int currentPitchWheelPosition) override {
+        float wheelVal = currentPitchWheelPosition / 16386.0f;
+        float upper = pow(2, pitchBendNumSemitones * 100 / 1200.0f);
+        float lower = 1 / upper;
+        pitchBend  = jmap(wheelVal, lower, upper);
+    }
+
     //--------------------------------------------------------------------------
     void controllerMoved(int, int) override {}
     //--------------------------------------------------------------------------
@@ -270,34 +298,44 @@ public:
     {
         return dynamic_cast<MySynthSound*> (sound) != nullptr;
     }
+
     //--------------------------------------------------------------------------
 private:
     //--------------------------------------------------------------------------
-    // Set up any necessary variables here
-    /// Should the voice be playing?
-    bool playing = false;
-    bool ending = false;
+    
+    // General
     float sr;
 
-    TriOsc triOsc1;
-    SineOsc sineOsc1;
-    SquareOsc squareOsc1;
+    // Oscillators
     Phasor sawOsc1;
-    float osc1Freq;
-
-    TriOsc triOsc2;
-    SineOsc sineOsc2;
-    SquareOsc squareOsc2;
+    SquareOsc squareOsc1;
+    SineOsc sineOsc1;
+    TriOsc triOsc1;
     Phasor sawOsc2;
-
-    TriOsc detuneOsc;
-
+    SquareOsc squareOsc2;
+    SineOsc sineOsc2;
+    TriOsc triOsc2;
+    float freq;
+    float detune = 1.0f;
     std::atomic <float>* osc1Type;
     std::atomic <float>* osc2Type;
-
-    float freq;
     std::atomic <float>* detuneAmount;
+    std::atomic <float>* vol1;
+    std::atomic <float>* vol2;
+    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedVol1;
+    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedVol2;
+    float gain1 = 0.5;
+    float gain2 = 0.5;
 
+    /// Noise
+    std::atomic <float >* vol3;
+    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedVol3;
+    float gain3 = 0.5f;
+    Noise noise;
+
+    // Envelope
+    bool playing = false;
+    bool ending = false;
     ADSR env;
     ADSR::Parameters envParams;
     std::atomic <float>* attack;
@@ -305,15 +343,13 @@ private:
     std::atomic <float>* sustain;
     std::atomic <float>* release;
 
-    std::atomic <float>* volume;
-    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedVolume;
-
-
-    /// a random object for use in our test noise function
-    Random random;
-
-    IIRFilter filter;
+    // Filter
+    //IIRFilter filter;
     std::atomic <float >* cutOff;
     std::atomic <float >* resonance;
     std::atomic <float >* filterType;
+
+    float pitchBend = 1.0f;
+    int pitchBendNumSemitones = 2;
+
 };
