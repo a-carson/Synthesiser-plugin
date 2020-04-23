@@ -10,7 +10,7 @@
 
 #pragma once
 #include "Oscillator.h"
-
+#include "MultiOscSynth.h"
 
 // ===========================
 // ===========================
@@ -75,7 +75,7 @@ public:
     void initialise(float sampleRate)
     {
         // Oscillators
-        setOscSampleRates(sampleRate);
+        oscs.setSampleRate(sampleRate);
 
         // Envelope
         env.setSampleRate(sampleRate);
@@ -102,8 +102,8 @@ public:
         playing = true;
         freq = MidiMessage::getMidiNoteInHertz(midiNoteNumber);
         pitchWheelMoved(currentPitchWheelPosition);
-        setOscFrequency(1, freq * pitchBend);
-        setOscFrequency(2, freq * pitchBend);
+        oscs.setOscFrequency(1, freq * pitchBend);
+        oscs.setOscFrequency(2, freq * pitchBend);
         
         
         // Start envelope
@@ -122,17 +122,7 @@ public:
     Set sample rates for all oscillators
     @param sampleRate
     */
-    void setOscSampleRates(float sampleRate)
-    {
-        sawOsc1.setSampleRate(sampleRate);
-        sineOsc1.setSampleRate(sampleRate);
-        squareOsc1.setSampleRate(sampleRate);
-        triOsc1.setSampleRate(sampleRate);
-        sawOsc2.setSampleRate(sampleRate);
-        sineOsc2.setSampleRate(sampleRate);
-        squareOsc2.setSampleRate(sampleRate);
-        triOsc2.setSampleRate(sampleRate);
-    }
+
 
     //---------------------------------------------------------------------------
     /*
@@ -140,62 +130,14 @@ public:
     @osc (1 or 2)
     @freq
     */
-    void setOscFrequency(int osc, float freq)
-    {
-        if (osc == 1)
-        {
-            sawOsc1.setFrequency(freq);
-            sineOsc1.setFrequency(freq);
-            squareOsc1.setFrequency(freq);
-            triOsc1.setFrequency(freq);
-        }
-            
-        if (osc == 2)
-        {
-            sawOsc2.setFrequency(freq);
-            sineOsc2.setFrequency(freq);
-            squareOsc2.setFrequency(freq);
-            triOsc2.setFrequency(freq);
-        }
-    }
+
 
     //---------------------------------------------------------------------------
     /*
     Process a specific oscillator deoending on user choice
     @osc (1 or 2)
     */
-    float oscProcess(int osc)
-    {
-        int oscType;
 
-        if (osc == 1)
-        {
-            oscType = (int) *osc1Type;
-
-            if (oscType == 0)
-                return sawOsc1.process() * 0.5;
-            if (oscType == 1)
-                return sineOsc1.process();
-            if (oscType == 2)
-                return squareOsc1.process() * 0.5;
-            if (oscType == 3)
-                return triOsc1.process();
-        }
-
-        if (osc == 2)
-        {
-            oscType = (int) *osc2Type;
-
-            if (oscType == 0)
-                return sawOsc2.process() * 0.5;
-            if (oscType == 1)
-                return sineOsc2.process();
-            if (oscType == 2)
-                return squareOsc2.process() * 0.5;
-            if (oscType == 3)
-                return triOsc2.process();
-        }
-    }
 
     //--------------------------------------------------------------------------
     /// Called when a MIDI noteOff message is received
@@ -233,11 +175,11 @@ public:
                 updateParameters();
 
                 // Set frequencies
-                setOscFrequency(1, freq * pitchBend);
-                setOscFrequency(2, freq * detune * pitchBend);
+                oscs.setOscFrequency(0, freq * pitchBend);
+                oscs.setOscFrequency(1, freq * detune * pitchBend);
 
                 // Process oscs
-                float currentSample = 0.5f * (oscProcess(1) * gain1 + oscProcess(2) * gain2 + noise.process() * gain3);
+                float currentSample = 0.5f * (oscs.process(0, (int)*osc1Type) * gain1 + oscs.process(1, (int)*osc2Type) * gain2 + noise.process() * gain3);
 
                 // Get envelope value
                 float envelopeValue = env.getNextSample();
@@ -307,14 +249,7 @@ private:
     float sr;
 
     // Oscillators
-    Phasor sawOsc1;
-    SquareOsc squareOsc1;
-    SineOsc sineOsc1;
-    TriOsc triOsc1;
-    Phasor sawOsc2;
-    SquareOsc squareOsc2;
-    SineOsc sineOsc2;
-    TriOsc triOsc2;
+    MultiOscSynth oscs{2};
     float freq;
     float detune = 1.0f;
     std::atomic <float>* osc1Type;

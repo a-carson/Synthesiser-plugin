@@ -222,7 +222,8 @@ void SynthesiserAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     delay.setMaxDelayTime(5000);
     delay.setDelayTime(500);
     delay.setFeedbackAmount(0.5f);
-    smoothedDelayTime.reset(8192);
+    smoothedDelayTime.reset(sampleRate, 0.1);
+    smoothedDelayTime.setCurrentAndTargetValue(0.0);
 
 }
 
@@ -258,10 +259,10 @@ bool SynthesiserAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 
 void SynthesiserAudioProcessor::updateDspParameters()
 {
+    // Lfo Parameters
     float lfoFreq = 10.0f * pow(2, 10.0f * (*filterLfoFreqParam - 1.0f));
     lfo.setFrequency(lfoFreq);
-    lfoMin = 1 / (*filterLfoDepthParam + 1.0f);
-    lfoMax = 1.0f + *filterLfoDepthParam;
+    lfo.setDepth(*filterLfoDepthParam);
 
     // Ladder Filters
     float cutOff = *cutOffParam * lfoVal;           // deference pointer
@@ -270,13 +271,12 @@ void SynthesiserAudioProcessor::updateDspParameters()
     lowPassLadder.setResonance(*qParam);            // set resonance    
     highPassLadder.setCutoffFrequencyHz(cutOff);   
     highPassLadder.setResonance(*qParam);
-
 }
 
 void SynthesiserAudioProcessor::updateOtherParameters()
 {
     float delayTime = smoothedDelayTime.getNextValue();
-    delay.setDelayTime(*delayTimeParam * 1000.0f);
+    delay.setDelayTime(delayTime);
     delay.setFeedbackAmount(*feedbackParam);
 }
 
@@ -288,7 +288,7 @@ void SynthesiserAudioProcessor::process(dsp::ProcessContextReplacing <float> con
     if (*filterType > 0.5)
         highPassLadder.process(context);
 
-    
+
 }
 
 
@@ -309,12 +309,12 @@ void SynthesiserAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBu
     float* left = buffer.getWritePointer(0);
     float* right = buffer.getWritePointer(1);
 
-    smoothedDelayTime.setTargetValue(*delayTimeParam);
+    smoothedDelayTime.setTargetValue(*delayTimeParam * 1000);
 
     for (int i = 0; i < buffer.getNumSamples(); i++)
     {
         updateOtherParameters();
-        lfoVal = jmap(lfo.process(), -0.5f, 0.5f, lfoMin, lfoMax);
+        lfoVal = lfo.process();
         left[i] += *delayBlendParam * delay.process(left[i]);
         right[i] += *delayBlendParam * delay.process(right[i]);
     }

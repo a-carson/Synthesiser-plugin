@@ -14,6 +14,7 @@
 #include "MySynthesiser.h"
 #include "MoogVCF.h"
 #include "DelayLine.h"
+#include "Lfo.h"
 
 //#include "juce_dsp/processors/juce_ProcessContext.h"
 //==============================================================================
@@ -92,21 +93,19 @@ private:
     std::atomic <float >* filterType;
     std::atomic <float >* filterLfoFreqParam;
     std::atomic <float >* filterLfoDepthParam;
+    
+    Lfo lfo;
     float lfoVal;
-    float lfoMin;
-    float lfoMax;
-
 
     IIRFilter filter;
     MoogLadderFilterLinear moog{};
 
-    SineOsc lfo;
 
     DelayLine delay;
     std::atomic <float >* delayTimeParam;
     std::atomic <float >* delayBlendParam;
     std::atomic <float >* feedbackParam;
-    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedDelayTime;
+    SmoothedValue<float> smoothedDelayTime;
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthesiserAudioProcessor)
 };
