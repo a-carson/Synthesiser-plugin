@@ -2,8 +2,8 @@
 
 #ifndef DelayLine_h
 #define DelayLine_h
-#include "Oscillator.h"
-#include "Map.h"
+#include "Osc.h"
+#include "Lfo.h"
 
 /** Stores a sample in a buffer and reads it after a specified time. 
 Uses Lagrange interpolation to account for fractional delays.*/
@@ -98,7 +98,7 @@ public:
 	void setMaxDelayTime(float maxDelayTime)
 	{
 		maxDelayTimeInMiliSeconds = maxDelayTime;
-		bufferSize = ceil(0.001f * maxDelayTimeInMiliSeconds * sampleRate);
+		bufferSize = (int) ceil(0.001f * maxDelayTimeInMiliSeconds * sampleRate);
 		buffer = new float[bufferSize];
 
 		// Initialise buffer with zeros
@@ -154,13 +154,28 @@ private:
 	float feedback = 0.5f;											// feedback amount (beetween 0 and 1)
 };
 
-// FLANGER CLASS
 
-/*Flanger effect*/
+/*Flanger effect - specify TRUE in the constructor for random LFO. Default is FALSE.*/
 class Flanger
 {
 
 public: 
+	/* 
+	Constructor
+	@param random (set true for random lfo)
+	*/
+	Flanger(bool random = NULL)
+	{
+		isRandom = random;
+	}
+
+	void initialise(float sampleRate, float maxDelayTimeInMiliSeconds)
+	{
+		delay.setSampleRate(sampleRate);
+		delay.setMaxDelayTime(1.10f * maxDelayTimeInMiliSeconds);
+		lfo.setSampleRate(sampleRate);
+		randLfo.setSampleRate(sampleRate);
+	}
 	/*Sets all required parameters for the flanger.
 	
 	@param sampleRate	in Hz
@@ -169,37 +184,135 @@ public:
 	@param strength		mix of wet effect (between 0 and 1)
 	@param feedback		feedback amount (between 0 and 1)
 	*/
-	void setParameters(float sampleRate, float lfoFrequency, float delayTime, float strength, float feedback)
+	void setParameters(float delayTime,float lfoFrequency, float depth, float feedback = 0.0f)
 	{
-		delay.setSampleRate(sampleRate);
-		delay.setMaxDelayTime(2.0f * delayTime);
 		delay.setFeedbackAmount(feedback);
-		lfo.setSampleRate(sampleRate);
-		lfo.setFrequency(lfoFrequency);
+
+		if (isRandom == false)
+		{
+			lfo.setFrequency(lfoFrequency);
+			lfo.setDepth(depth);
+		}
+
+		if (isRandom == true)
+		{
+			randLfo.setParameters(lfoFrequency, depth);
+		}
+
 		delayInMiliSeconds = delayTime;
-		g = strength;
 	}
+
 
 	/*Returns the input sample + delayed sample to give flanger effect*/
 	float process(float sample)
 	{
-		float lfoVal = map(lfo.process(), -0.5f, 0.5f, 1.0f, 2.0f * delayInMiliSeconds);
-		delay.setDelayTime(lfoVal);
-		float output = sample + g * delay.process(sample);
+		if (isRandom == false)
+			delay.setDelayTime(lfo.process() * delayInMiliSeconds);
+		
+		if (isRandom == true)
+			delay.setDelayTime(randLfo.process() * delayInMiliSeconds);
+
+		float output = delay.process(sample);
 		return  output;
 	}
 
 private:
+	bool isRandom;
 	DelayLine delay;			// delay line
-	SineOsc lfo;				// lfo - sine oscillator
-	float sampleRate;			// sample rate in Hz
+	Lfo lfo;					// lfo sine osc
+	RandomLfo randLfo;			// random lfo
 	float lfoFreq;				// LFO frequency in Hz
 	float delayInMiliSeconds;	// average delay time in miliseconds. LFO oscillates between 0 and 2 * delayTime.
-	float g = 0.8f;				// strength of effect
-
 };
 
+/*Multi-channel chorus class. Specify number of channels in the constructor.
+  The delay times are controlled by the RandomLFO class.*/
+class Chorus
+{
+public:
+	/*Constructor
+	@param numChannels*/ 
+	Chorus(int numChannels)
+	{
+		channels = numChannels;
 
+		for (int i = 0; i < channels; i++)
+		{
+			flangers.add(new Flanger(true));
+		}
+	}
+
+	// Returns the current value of the delayed signal - can specify a particular channel is desired.
+	float process(float sample, int channel = NULL)
+	{
+		float out = 0.0f;
+
+		for (int i = 0; i < channels; i++)
+		{
+			if (i == channel)
+				return flangers[channel]->process(sample);
+
+			else
+			{
+				out += flangers[i]->process(sample);
+			}
+
+		}
+
+		return out;
+	}
+
+	// Sets the sample rate and maximum buffer size
+	void initialise(float sampleRate, float maxDelayTimeInMilliseconds)
+	{
+		for (int i = 0; i < channels; i++)
+		{
+			flangers[i]->initialise(sampleRate, maxDelayTimeInMilliseconds);
+		}
+	}
+
+	// Sets all parameters at once
+	void setParameters(float delayTime, float speed, float depth = 1.0f)
+	{
+		rate = speed;
+		dept = depth;
+		delay = delayTime;
+
+		for (int i = 0; i < channels; i++)
+		{
+			flangers[i]->setParameters(delayTime, speed, depth);
+		}
+	}
+
+	// Sets the speed of the chorus effect
+	void setSpeed(float speed)
+	{
+		rate = speed;
+
+		for (int i = 0; i < channels; i++)
+		{
+			flangers[i]->setParameters(delay, speed, dept);
+		}
+	}
+
+	// Sets the average delay time of the chorus effect
+	void setDelayTime(float delayTime)
+	{
+		delay = delayTime;
+
+		for (int i = 0; i < channels; i++)
+		{
+			flangers[i]->setParameters(delay, rate, dept);
+		}
+	}
+
+private:
+	OwnedArray<Flanger> flangers;	// array of flangers, 1 per channel
+	int channels;					// number of channels
+	float delay;					// average delay time
+	float rate;						// speed of LFO
+	float dept;						// depth of LFO
+};
 #endif /* DelayLine_h */
 
 

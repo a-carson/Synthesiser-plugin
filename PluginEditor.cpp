@@ -37,6 +37,5 @@ void SynthesiserAudioProcessorEditor::paint (Graphics& g)
 
 void SynthesiserAudioProcessorEditor::resized()
 {
-    // This is generally where you'll want to lay out the positions of any
-    // subcomponents in your editor..
+    
 }

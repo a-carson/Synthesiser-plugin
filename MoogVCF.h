@@ -1,10 +1,8 @@
 #pragma once
-//#include "juce_dsp/maths/juce_Matrix.h"
 #include <Eigen/Dense>
 
 
 using namespace Eigen;
-//using namespace dsp;
 
 class MoogLadderFilterLinear
 {

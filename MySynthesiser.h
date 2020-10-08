@@ -9,8 +9,9 @@
 */
 
 #pragma once
-#include "Oscillator.h"
+#include "Osc.h"
 #include "MultiOscSynth.h"
+#include "Lfo.h"
 
 // ===========================
 // ===========================
@@ -66,10 +67,8 @@ public:
         decay = param7;
         sustain = param8;
         release = param9;
-        cutOff = param10;
-        resonance = param11;
-        filterType = param12;
-        vol3 = param13;
+        vol3 = param10;
+        pw = param11;
     }
 
     void initialise(float sampleRate)
@@ -81,9 +80,12 @@ public:
         env.setSampleRate(sampleRate);
 
         // Smoothed Values;
-        smoothedVol1.reset(512);
-
-        sr = sampleRate;
+        smoothedVol1.reset(sampleRate, 0.1);
+        smoothedVol2.reset(sampleRate, 0.1);
+        smoothedVol1.setCurrentAndTargetValue(0.0f);
+        smoothedVol2.setCurrentAndTargetValue(0.0f);
+        smoothedPw.reset(sampleRate, 0.1);
+        smoothedPw.setCurrentAndTargetValue(0.0f);
     }
 
  
@@ -102,9 +104,8 @@ public:
         playing = true;
         freq = MidiMessage::getMidiNoteInHertz(midiNoteNumber);
         pitchWheelMoved(currentPitchWheelPosition);
-        oscs.setOscFrequency(1, freq * pitchBend);
-        oscs.setOscFrequency(2, freq * pitchBend);
-        
+        oscs.setOscFrequency(1, (int)*osc1Type, freq * pitchBend);
+        oscs.setOscFrequency(2, (int)*osc2Type, freq * pitchBend);
         
         // Start envelope
         ending = false;
@@ -116,27 +117,6 @@ public:
         env.setParameters(envParams);
         env.noteOn();
     }
-
-    // ----------------------------------------------------------------------------
-    /**
-    Set sample rates for all oscillators
-    @param sampleRate
-    */
-
-
-    //---------------------------------------------------------------------------
-    /*
-    Set frequencies of oscillators
-    @osc (1 or 2)
-    @freq
-    */
-
-
-    //---------------------------------------------------------------------------
-    /*
-    Process a specific oscillator deoending on user choice
-    @osc (1 or 2)
-    */
 
 
     //--------------------------------------------------------------------------
@@ -153,6 +133,8 @@ public:
         ending = true;
     }
 
+
+
     //--------------------------------------------------------------------------
     /**
      The Main DSP Block: Put your DSP code in here
@@ -167,64 +149,63 @@ public:
     {
         if (playing) // check to see if this voice should be playing
         {
-            updateParameters();
+            setTargetValues();
 
             for (int sampleIndex = startSample; sampleIndex < (startSample + numSamples); sampleIndex++)
             {
-                // Update Parameters
+                // update parameters
                 updateParameters();
 
-                // Set frequencies
-                oscs.setOscFrequency(0, freq * pitchBend);
-                oscs.setOscFrequency(1, freq * detune * pitchBend);
+                // set frequencies
+                oscs.setOscFrequency(0, (int)*osc1Type, freq * pitchBend);
+                oscs.setOscFrequency(1, (int)*osc2Type, freq * detune * pitchBend);
 
-                // Process oscs
-                float currentSample = 0.5f * (oscs.process(0, (int)*osc1Type) * gain1 + oscs.process(1, (int)*osc2Type) * gain2 + noise.process() * gain3);
+                // set pulse width of square oscs
+                for (int i = 0; i < numOscs; i++)
+                {
+                    oscs.setPulseWidth(i, smoothedPw.getNextValue() / 100.0f);
+                }
+                
+                // process oscs
+                float currentSample = 0.5f * (oscs.process(0, (int)*osc1Type) * gain1 + 
+                                              oscs.process(1, (int)*osc2Type) * gain2 + 
+                                              noise.process() * gain3);
 
-                // Get envelope value
-                float envelopeValue = env.getNextSample();
-                currentSample *= envelopeValue;
+                currentSample *= env.getNextSample();   //apply envelope
 
                 // Write to output channels
                 for (int chan = 0; chan < outputBuffer.getNumChannels(); chan++)
                 {
                     outputBuffer.addSample(chan, sampleIndex, currentSample);
                 }
-
-                // Clear note
-                if (ending)
-                {
-                    if (envelopeValue < 0.001f)
-                    {
-                        clearCurrentNote();
-                        playing = false;
-                        
-                    }
-                }
             }
         }
     }
-    //--------------------------------------------------------------------------
-    /*
-    Update parameters from UI
-    */
-    void updateParameters()
+
+    //Set targets for smoothed parameters
+    void setTargetValues()
     {
         smoothedVol1.setTargetValue(*vol1);
         smoothedVol2.setTargetValue(*vol2);
         smoothedVol3.setTargetValue(*vol3);
+        smoothedPw.setTargetValue(*pw);
+    }
+
+    // Updates parameters from UI and smoothed params
+    void updateParameters()
+    {
         gain1 = smoothedVol1.getNextValue();
         gain2 = smoothedVol2.getNextValue();
         gain3 = smoothedVol3.getNextValue();
         detune = 1.0f + 0.5f * pow(*detuneAmount, 3);
     }
 
-    //--------------------------------------------------------------------------
+    // Handles pitch wheel moved events and sets pitch bend value
     void pitchWheelMoved(int currentPitchWheelPosition) override {
         float wheelVal = currentPitchWheelPosition / 16386.0f;
         float upper = pow(2, pitchBendNumSemitones * 100 / 1200.0f);
         float lower = 1 / upper;
-        pitchBend  = jmap(wheelVal, lower, upper);
+        pitchBend = jmap(wheelVal, lower, upper);
     }
 
     //--------------------------------------------------------------------------
@@ -245,46 +226,43 @@ public:
 private:
     //--------------------------------------------------------------------------
     
-    // General
-    float sr;
+    // OSCILLATOR ------------------------------------------------
+    const int numOscs = 2;                                              // number of oscillators
+    MultiOscSynth oscs{numOscs};                                        // oscillator control class
+    float freq;                                                         // current note frequency
+    float detune = 1.0f;                                                // scaled tuning for osc 2
+    float gain1 = 0.5;                                                  // osc 1 gain (current)
+    float gain2 = 0.5;                                                  // osc 2 gain (current)
+    float pitchBend = 1.0f;                                             // current pitch bend value
+    int pitchBendNumSemitones = 2;                                      // controls the extent of the pitch wheel effect
+    std::atomic <float>* osc1Type;                                      // osc 1 type
+    std::atomic <float>* osc2Type;                                      // osc 2 type
+    std::atomic <float>* detuneAmount;                                  // raw detune parameter from UI
+    std::atomic <float>* vol1;                                          // osc 1 gain (raw)
+    std::atomic <float>* vol2;                                          // osc 2 gain (raw)
+    std::atomic <float>* pw;                                            // square wave pulse width (raw)
+    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedVol1;     // osc 1 gain (smoothed)
+    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedVol2;     // osc 2 gain (smoothed)
+    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedPw;       // pulse width (smoothed)
 
-    // Oscillators
-    MultiOscSynth oscs{2};
-    float freq;
-    float detune = 1.0f;
-    std::atomic <float>* osc1Type;
-    std::atomic <float>* osc2Type;
-    std::atomic <float>* detuneAmount;
-    std::atomic <float>* vol1;
-    std::atomic <float>* vol2;
-    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedVol1;
-    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedVol2;
-    float gain1 = 0.5;
-    float gain2 = 0.5;
 
-    /// Noise
-    std::atomic <float >* vol3;
-    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedVol3;
-    float gain3 = 0.5f;
+    /// NOISE ---------------------------------------------------
     Noise noise;
+    float gain3 = 0.5f;                                                 // noise gain (current)
+    std::atomic <float >* vol3;                                         // noise gain (raw)
+    SmoothedValue<float, ValueSmoothingTypes::Linear> smoothedVol3;     // noise gain (smoothed)
 
-    // Envelope
-    bool playing = false;
-    bool ending = false;
-    ADSR env;
-    ADSR::Parameters envParams;
-    std::atomic <float>* attack;
-    std::atomic <float>* decay;
-    std::atomic <float>* sustain;
-    std::atomic <float>* release;
+    // ENVELOPE -------------------------------------------------
+    ADSR env;                                                           // amplitude envelope
+    ADSR::Parameters envParams;                                         // amplitude envelope paramters
+    std::atomic <float>* attack;                                        // attack time (s)
+    std::atomic <float>* decay;                                         // decay time (s)
+    std::atomic <float>* sustain;                                       // sustain level
+    std::atomic <float>* release;                                       // release time (s)
+    bool playing = false;                                               // is note playing
+    bool ending = false;                                                // is note ending
 
-    // Filter
-    //IIRFilter filter;
-    std::atomic <float >* cutOff;
-    std::atomic <float >* resonance;
-    std::atomic <float >* filterType;
 
-    float pitchBend = 1.0f;
-    int pitchBendNumSemitones = 2;
+
 
 };
